@@ -173,6 +173,7 @@ write_pid(pid_t p)
 	if (fh == NULL)
 	{
 		syslog(LOG_WARNING, "Unable to write pid file /var/run/bsd-rngd: %s", strerror(errno));
+		exit(-1)
 	}
 	flock(fileno(fh), LOCK_EX);
 	fprintf(fh,"%d\n",p);
@@ -185,7 +186,7 @@ main(void)
 {
 	/* read the config */
 	conf_t config;
-	read_config(&config, "/etc/bsd-rngd.conf");
+	read_config(&config, "/usr/local/etc/bsd-rngd.conf");
 	
 	/* some boiler plate daemonization code */
 	pid_t pid, sid;
