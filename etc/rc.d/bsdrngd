@@ -1,0 +1,11 @@
+#!/bin/sh
+
+. /etc/rc.subr
+
+name=bsdrngd
+rcvar=bsdrngd_enable
+
+command="/usr/local/sbin/${name}"
+
+load_rc_config $name
+run_rc_command $i
