@@ -4,8 +4,15 @@
 
 name=bsdrngd
 rcvar=bsdrngd_enable
-
+start_cmd="${name}_enable"
+stop_cmd=":"
 command="/usr/local/sbin/${name}"
 
+bsdrngd_enable()
+{
+	/usr/local/sbin/bsdrngd
+}
+
+
 load_rc_config $name
-run_rc_command $i
+run_rc_command "$1" 
