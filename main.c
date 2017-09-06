@@ -44,7 +44,7 @@ typedef struct conf {
 
 } conf_t;
 
-
+void write_pid(pid_t);
 
 void
 read_entropy(char *dev, char *buf, uint32_t n)
@@ -94,6 +94,7 @@ write_entropy(char *buf, int n)
 
 void entropy_feed(char *dev, uint32_t n, uint32_t s)
 {
+	write_pid(getpid());
 	syslog(LOG_NOTICE, "bsd-rngd: entropy gathering daemon started for device %s", dev);
 	char buf[n];
 	explicit_bzero(buf,n);
@@ -156,7 +157,19 @@ read_config(conf_t *c, char *f)
 	
 }
 
-
+void
+write_pid(pid_t p)
+{
+	FILE *fh = fopen("/var/run/bsd-rngd.pid", "w");
+	if (fh == NULL)
+	{
+		syslog(LOG_WARNING, "Unable to write pid file /var/run/bsd-rngd: %s", strerror(errno));
+	}
+	flock(fileno(fh), LOCK_EX);
+	fprintf(fh,"%d\n",p);
+	flock(fileno(fh), LOCK_UN);
+	fclose(fh);
+}
 
 int
 main(void)
