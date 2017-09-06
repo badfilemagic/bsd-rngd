@@ -37,6 +37,8 @@
 #define MAX_CONF_LINE_BUF	24
 #define MAX_BYTES 		64
 #define DELIMETER		"="	
+
+/* structure containing configuration file items */
 typedef struct conf {
 	char		entropy_device[MAX_DEV_NAME_LEN];
 	char		read_bytes[2];
@@ -46,14 +48,19 @@ typedef struct conf {
 
 void write_pid(pid_t);
 
+
+/* read entropy from the trng device */
 void
 read_entropy(char *dev, char *buf, uint32_t n)
 {
+
+	/* change this later */
 	if (n > MAX_BYTES)
 	{
 		syslog(LOG_INFO, "WARN: Requested bytes greater than 64. Using 64");
 		n = 64;
 	}
+
 	ssize_t rv = 0;
 	int fd = open(dev, O_RDONLY);
 	if ( fd < 0 )
@@ -91,7 +98,7 @@ write_entropy(char *buf, int n)
 	close(fd);
 }
 
-
+/* main daemon child loop */
 void entropy_feed(char *dev, uint32_t n, uint32_t s)
 {
 	write_pid(getpid());
@@ -108,6 +115,7 @@ void entropy_feed(char *dev, uint32_t n, uint32_t s)
 	}
 }
 
+/* Perl-like utility function */
 void
 chomp(char *s)
 {
@@ -120,7 +128,7 @@ chomp(char *s)
 	
 }
 
-
+/* read in the configuration file */
 void
 read_config(conf_t *c, char *f)
 {
@@ -157,6 +165,7 @@ read_config(conf_t *c, char *f)
 	
 }
 
+/* write pid file to /var/run */
 void
 write_pid(pid_t p)
 {
@@ -174,9 +183,11 @@ write_pid(pid_t p)
 int
 main(void)
 {
+	/* read the config */
 	conf_t config;
 	read_config(&config, "/etc/bsd-rngd.conf");
-	// some boiler-plate daemonization code
+	
+	/* some boiler plate daemonization code */
 	pid_t pid, sid;
 	pid = fork();
 
@@ -191,6 +202,6 @@ main(void)
 	close(STDOUT_FILENO);
 	close(STDERR_FILENO);
 
-	// run the real logic here. Takes an trng device node and a number of bytes as arguments
+	/* get to doing work */
 	entropy_feed(config.entropy_device, (uint32_t)atoi(config.read_bytes), (uint32_t)atoi(config.sleep_seconds));
 }
