@@ -1,16 +1,21 @@
 #!/bin/sh
 
+# PROVIDE: bsdrngd
+# REQUIRE: devd
+# KEYWORD: nojail
+
 . /etc/rc.subr
 
 name=bsdrngd
 rcvar=bsdrngd_enable
-start_cmd="${name}_enable"
-stop_cmd=":"
-command="/usr/local/sbin/${name}"
+stop_cmd=bsdrngd_stop
+command="/usr/local/sbin/bsdrngd"
+command_args="-d"
 
-bsdrngd_enable()
+bsdrngd_stop()
 {
-	/usr/local/sbin/bsdrngd
+	cat /var/run/bsd-rngd.pid | xargs kill -9
+	rm /var/run/bsd-rngd.pid
 }
 
 
