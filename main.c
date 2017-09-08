@@ -47,19 +47,13 @@ typedef struct conf {
 } conf_t;
 
 void write_pid(pid_t);
-
+void read_config(conf_t*, char*);
 
 /* read entropy from the trng device */
 void
 read_entropy(char *dev, char *buf, uint32_t n)
 {
 
-	/* change this later */
-	if (n > MAX_BYTES)
-	{
-		syslog(LOG_INFO, "WARN: Requested bytes greater than 64. Using 64");
-		n = 64;
-	}
 
 	ssize_t rv = 0;
 	int fd = open(dev, O_RDONLY);
@@ -99,19 +93,22 @@ write_entropy(char *buf, int n)
 }
 
 /* main daemon child loop */
-void entropy_feed(char *dev, uint32_t n, uint32_t s)
+void entropy_feed(char *config_path)
 {
+	conf_t conf;
+	read_config(&conf, config_path);
 	write_pid(getpid());
-	syslog(LOG_NOTICE, "bsd-rngd: entropy gathering daemon started for device %s", dev);
+	syslog(LOG_NOTICE, "bsd-rngd: entropy gathering daemon started for device %s", conf.entropy_device);
+	uint32_t n = (uint32_t)atoi(conf.read_bytes);
 	char buf[n];
 	explicit_bzero(buf,n);
 	/* main loop to do the thing */
 	while(1)
 	{
-		read_entropy(dev,buf,n);
+		read_entropy(conf.entropy_device,buf,n);
 		write_entropy(buf,n);
 		explicit_bzero(buf,n);
-		sleep(s);
+		sleep((uint32_t)atoi(conf.sleep_seconds));
 	}
 }
 
@@ -173,7 +170,7 @@ write_pid(pid_t p)
 	if (fh == NULL)
 	{
 		syslog(LOG_WARNING, "Unable to write pid file /var/run/bsd-rngd: %s", strerror(errno));
-		exit(-1)
+		exit(-1);
 	}
 	flock(fileno(fh), LOCK_EX);
 	fprintf(fh,"%d\n",p);
@@ -184,9 +181,6 @@ write_pid(pid_t p)
 int
 main(void)
 {
-	/* read the config */
-	conf_t config;
-	read_config(&config, "/usr/local/etc/bsd-rngd.conf");
 	
 	/* some boiler plate daemonization code */
 	pid_t pid, sid;
@@ -204,5 +198,5 @@ main(void)
 	close(STDERR_FILENO);
 
 	/* get to doing work */
-	entropy_feed(config.entropy_device, (uint32_t)atoi(config.read_bytes), (uint32_t)atoi(config.sleep_seconds));
+	entropy_feed("/usr/local/etc/bsd-rngd.conf");
 }
