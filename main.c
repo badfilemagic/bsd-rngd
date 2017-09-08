@@ -47,7 +47,16 @@ typedef struct conf {
 } conf_t;
 
 void write_pid(pid_t);
-void read_config(conf_t*, char*);
+
+void
+usage(void)
+{
+	fprintf(stderr,"USAGE: bsdrngd [-d -c /path/to/config]\nBy default, will run in the foreground and load its config from /usr/local/etc/bsd-rngd.conf\n");
+	exit(1);
+}
+
+
+
 
 /* read entropy from the trng device */
 void
@@ -75,7 +84,10 @@ read_entropy(char *dev, char *buf, uint32_t n)
 
 void
 write_entropy(char *buf, int n)
-{
+{	
+
+
+
 	ssize_t rv = 0;
 	int fd = open("/dev/random", O_WRONLY);
 	if ( fd < 0 )
@@ -83,7 +95,7 @@ write_entropy(char *buf, int n)
 		syslog(LOG_ERR, "Unable to open /dev/random for writing: %s", strerror(errno));
 		exit(-1);
 	}
-	rv = write(fd,buf,n);
+
 	if ( rv < 0 ) 
 	{
 		syslog(LOG_ERR, "Unable to write to /dev/random: %s", strerror(errno));
@@ -93,22 +105,19 @@ write_entropy(char *buf, int n)
 }
 
 /* main daemon child loop */
-void entropy_feed(char *config_path)
+void entropy_feed(char *dev, uint32_t n, uint32_t s)
 {
-	conf_t conf;
-	read_config(&conf, config_path);
 	write_pid(getpid());
-	syslog(LOG_NOTICE, "bsd-rngd: entropy gathering daemon started for device %s", conf.entropy_device);
-	uint32_t n = (uint32_t)atoi(conf.read_bytes);
+	syslog(LOG_NOTICE, "bsd-rngd: entropy gathering daemon started for device %s", dev);
 	char buf[n];
 	explicit_bzero(buf,n);
 	/* main loop to do the thing */
 	while(1)
 	{
-		read_entropy(conf.entropy_device,buf,n);
+		read_entropy(dev,buf,n);
 		write_entropy(buf,n);
 		explicit_bzero(buf,n);
-		sleep((uint32_t)atoi(conf.sleep_seconds));
+		sleep(s);
 	}
 }
 
@@ -179,24 +188,53 @@ write_pid(pid_t p)
 }
 
 int
-main(void)
+main(int argc, char *argv[])
 {
+	int ch;
+	conf_t config;
+	int c = 0;
+	int daemonize = 0;
+
+	while((ch = getopt(argc, argv, "hdc:")) != -1)
+	{
+		switch(ch)
+		{
+			case 'h':
+				usage();
+				break;
+			case 'd':
+				daemonize = 1;
+				break;
+			case 'c':
+				read_config(&config,optarg);
+				c = 1;
+				break;
+			default:
+				usage();
+		}
+		
+	}
+	if (c == 0)
+		read_config(&config, "/usr/local/etc/bsd-rngd.conf");
+
+	if (daemonize == 1)
+	{
 	
 	/* some boiler plate daemonization code */
-	pid_t pid, sid;
-	pid = fork();
+		pid_t pid, sid;
+		pid = fork();
 
-	if (pid < 0)
-		exit(-1);
-	if (pid > 0)
-		exit(0);
-	sid = setsid();
-	if (sid < 0)
-		exit(-1);
-	close(STDIN_FILENO);
-	close(STDOUT_FILENO);
-	close(STDERR_FILENO);
-
+		if (pid < 0)
+			exit(-1);
+		if (pid > 0)
+			exit(0);
+		sid = setsid();
+		if (sid < 0)
+			exit(-1);
+		close(STDIN_FILENO);
+		close(STDOUT_FILENO);
+		close(STDERR_FILENO);
+	}
 	/* get to doing work */
-	entropy_feed("/usr/local/etc/bsd-rngd.conf");
+	entropy_feed(config.entropy_device, (uint32_t)atoi(config.read_bytes), (uint32_t)atoi(config.sleep_seconds));
 }
