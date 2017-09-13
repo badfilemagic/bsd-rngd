@@ -32,6 +32,7 @@
 #include <syslog.h>
 #include <unistd.h>
 
+#include <ucl.h>
 
 #define MAX_DEV_NAME_LEN	16
 #define MAX_CONF_LINE_BUF	24
@@ -135,6 +136,7 @@ chomp(char *s)
 }
 
 /* read in the configuration file */
+
 void
 read_config(conf_t *c, char *f)
 {
@@ -170,6 +172,9 @@ read_config(conf_t *c, char *f)
 	fclose(fh);
 	
 }
+
+
+
 
 /* write pid file to /var/run */
 void
@@ -218,23 +223,7 @@ main(int argc, char *argv[])
 		read_config(&config, "/usr/local/etc/bsd-rngd.conf");
 
 	if (daemonize == 1)
-	{
-	
-	/* some boiler plate daemonization code */
-		pid_t pid, sid;
-		pid = fork();
-
-		if (pid < 0)
-			exit(-1);
-		if (pid > 0)
-			exit(0);
-		sid = setsid();
-		if (sid < 0)
-			exit(-1);
-		close(STDIN_FILENO);
-		close(STDOUT_FILENO);
-		close(STDERR_FILENO);
-	}
+		daemon(0,0);
 	/* get to doing work */
 	entropy_feed(config.entropy_device, (uint32_t)atoi(config.read_bytes), (uint32_t)atoi(config.sleep_seconds));
 }
