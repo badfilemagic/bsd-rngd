@@ -26,6 +26,7 @@
 #include <sys/types.h>
 
 #include <dirent.h>
+#include <err.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -34,16 +35,14 @@
 #include <syslog.h>
 #include <unistd.h>
 
-
 #define MAX_DEV_NAME_LEN	16
 #define MAX_CONF_LINE_BUF	24
-#define MAX_BYTES 		64
 #define DELIMETER		"="	
 
 /* structure containing configuration file items */
 typedef struct conf {
 	char		entropy_device[MAX_DEV_NAME_LEN];
-	char		read_bytes[2];
+	char		read_bytes[4];	
 	char		sleep_seconds[1];	
 
 } conf_t;
@@ -80,7 +79,7 @@ void
 write_entropy(int d, char *buf, int n)
 {	
 	ssize_t rv = 0;
-	rv = write(d,buf,n);	
+		rv = write(d,buf,n);
 	if ( rv < 0 ) 
 	{
 		syslog(LOG_ERR, "Unable to write to /dev/random: %s", strerror(errno));
@@ -119,8 +118,10 @@ void entropy_feed(char *dev, uint32_t n, uint32_t s)
 		syslog(LOG_ERR, "Unable to set capsicum rights limut on /dev/random file handle: %s", strerror(errno));
 		exit(-1);
 	}
-	cap_enter();	
 	syslog(LOG_NOTICE, "bsd-rngd: entropy gathering daemon started for device %s", dev);
+	
+	cap_enter();
+	
 	char buf[n];
 	explicit_bzero(buf,n);
 	/* main loop to do the thing */
@@ -128,7 +129,21 @@ void entropy_feed(char *dev, uint32_t n, uint32_t s)
 	{
 		read_entropy(fileno(trng),buf,n);
 		fpurge(trng);
-		write_entropy(fileno(rnd),buf,n);
+		if (n <= 16)
+		{
+			write_entropy(fileno(rnd),buf,n);
+		}
+		else
+		{
+			char ent[8];
+			explicit_bzero(ent,8);
+			for(int i = 0; i < (n - 8); i += 8)
+			{
+				memcpy(ent,buf,8);
+				write_entropy(fileno(rnd),ent,8);
+			}
+			explicit_bzero(ent,8);
+		}
 		explicit_bzero(buf,n);
 		sleep(s);
 	}
@@ -171,7 +186,7 @@ read_config(conf_t *c, char *f)
 		}
 		if (strstr(line, "BYTES") != 0)
 		{
-			memcpy(c->read_bytes, conf_item, 2);	
+			memcpy(c->read_bytes, conf_item, 4);	
 		}
 		if (strstr(line, "INTERVAL") != 0)
 		{
@@ -233,9 +248,30 @@ main(int argc, char *argv[])
 	}
 	if (c == 0)
 		read_config(&config, "/usr/local/etc/bsd-rngd.conf");
-
+	uint32_t bytes = 0;
+	const char *errstr;
+	bytes = (uint32_t)strtonum(config.read_bytes,8,4096,&errstr);
+	if (errstr != NULL)
+	{
+		errx(1, "BYTES value is out of range (8, 4096): %u :%s", bytes, errstr);
+		exit(-1);
+	}
+	printf("%d\n", bytes);
+	if ((bytes % 8) != 0)
+	{
+		if (daemonize == 0)
+		{
+			fprintf(stderr,"Error: specified value for read_bytes %u is not a multiple of 8!\n", bytes);
+			exit(-1);
+		}
+		else
+		{
+			syslog(LOG_ERR, "specified value for read_bytes %u is not a multiple of 8!\n", bytes);
+			exit(-1);
+		}
+	}
 	if (daemonize == 1)
 		daemon(0,0);
 	/* get to doing work */
-	entropy_feed(config.entropy_device, (uint32_t)atoi(config.read_bytes), (uint32_t)atoi(config.sleep_seconds));
+	entropy_feed(config.entropy_device, bytes, (uint32_t)atoi(config.sleep_seconds));
 }
