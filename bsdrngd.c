@@ -35,15 +35,14 @@
 #include <syslog.h>
 #include <unistd.h>
 
-#define MAX_DEV_NAME_LEN	16
-#define MAX_CONF_LINE_BUF	24
+#define MAX_CONF_LINE_BUF	FILENAME_MAX + 9	
 #define DELIMETER		"="	
 
 /* structure containing configuration file items */
 typedef struct conf {
-	char		entropy_device[MAX_DEV_NAME_LEN];
-	char		read_bytes[4];	
-	char		sleep_seconds[1];	
+	char		entropy_device[FILENAME_MAX];
+	char		read_bytes[5];	
+	char		sleep_seconds[3];	
 
 } conf_t;
 
@@ -182,15 +181,15 @@ read_config(conf_t *c, char *f)
 		conf_item = conf_item + strlen(DELIMETER);
 		if (strstr(line, "DEVICE") !=0)
 		{
-			memcpy(c->entropy_device, conf_item, MAX_DEV_NAME_LEN);
+			strlcpy(c->entropy_device, conf_item, FILENAME_MAX);
 		}
 		if (strstr(line, "BYTES") != 0)
 		{
-			memcpy(c->read_bytes, conf_item, 4);	
+			strlcpy(c->read_bytes, conf_item, 5);
 		}
 		if (strstr(line, "INTERVAL") != 0)
 		{
-			memcpy(c->sleep_seconds, conf_item, 1);
+			strlcpy(c->sleep_seconds, conf_item, 3);
 	
 		}
 	}
@@ -248,15 +247,22 @@ main(int argc, char *argv[])
 	}
 	if (c == 0)
 		read_config(&config, "/usr/local/etc/bsd-rngd.conf");
-	uint32_t bytes = 0;
+	uint32_t bytes = 0, sleep = 0;
 	const char *errstr;
 	bytes = (uint32_t)strtonum(config.read_bytes,8,4096,&errstr);
 	if (errstr != NULL)
 	{
-		errx(1, "BYTES value is out of range (8, 4096): %u :%s", bytes, errstr);
-		exit(-1);
+		if (daemonize == 0)
+		{
+			errx(1, "BYTES value is out of range (8, 4096): %u :%s", bytes, errstr);
+			exit(-1);
+		}
+		else
+		{
+			syslog(LOG_ERR, "Value for bytes to read is out of range (8,4096): %d: %s", bytes, errstr);
+			exit(-1);
+		}
 	}
-	printf("%d\n", bytes);
 	if ((bytes % 8) != 0)
 	{
 		if (daemonize == 0)
@@ -270,8 +276,23 @@ main(int argc, char *argv[])
 			exit(-1);
 		}
 	}
+	bytes = (uint32_t)strtonum(config.sleep_seconds, 0,10,&errstr);
+	if (errstr != NULL)
+	{
+		if (daemonize == 0)
+		{
+			errx(1, "Sleep seconds is out of range (0,10): %u: %s", sleep, errstr);
+			exit(-1);
+		}
+		else
+		{
+			syslog(LOG_ERR, "Specified value for sleep interval %d is out of range (0,10): %s", sleep, errstr);
+			exit(-1);
+		}
+	}
+
 	if (daemonize == 1)
 		daemon(0,0);
 	/* get to doing work */
-	entropy_feed(config.entropy_device, bytes, (uint32_t)atoi(config.sleep_seconds));
+	entropy_feed(config.entropy_device, bytes, sleep);
 }

@@ -1,6 +1,6 @@
-CFLAGS=-Wall -g 
+CFLAGS=-Wall -g -DHARDENEDBSD -O2 
 
 bsd-rngd:
 	cc ${CFLAGS} bsdrngd.c -o bsdrngd
 clean:
-	rm -f bsd-rngd *.o
+	rm -f bsdrngd *.o
