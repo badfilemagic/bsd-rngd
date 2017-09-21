@@ -29,6 +29,7 @@
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <libutil.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -46,18 +47,20 @@ typedef struct conf {
 
 } conf_t;
 
-void write_pid(pid_t);
+static volatile sig_atomic_t wantdie = 0;
 
-void
+static void
 usage(void)
 {
-	fprintf(stderr,"USAGE: bsdrngd [-d -c /path/to/config]\nBy default, will run in the foreground and load its config from /usr/local/etc/bsd-rngd.conf\n");
+	fprintf(stderr,"USAGE: bsdrngd [-d] [-c config_file]\nBy default, will run in the foreground and load its config from /usr/local/etc/bsd-rngd.conf\n");
 	exit(1);
 }
 
-
-
-
+static void
+dodie(int signo)
+{
+	wantdie = signo;
+}
 /* read entropy from the trng device */
 void
 read_entropy(int fd, char *buf, uint32_t n)
@@ -91,7 +94,6 @@ void entropy_feed(char *dev, uint32_t n, uint32_t s)
 {
 	
 	cap_rights_t rights;	
-	write_pid(getpid());
 
 	FILE *trng = fopen(dev,"r");
 	if (trng == NULL)
@@ -124,8 +126,10 @@ void entropy_feed(char *dev, uint32_t n, uint32_t s)
 	char buf[n];
 	explicit_bzero(buf,n);
 	/* main loop to do the thing */
-	while(1)
+	for(;;)
 	{
+		if(wantdie)
+			return;
 		read_entropy(fileno(trng),buf,n);
 		fpurge(trng);
 		if (n <= 16)
@@ -163,14 +167,22 @@ chomp(char *s)
 
 /* read in the configuration file */
 void
-read_config(conf_t *c, char *f)
+read_config(conf_t *c, char *f, int d)
 {
 	FILE *fh = fopen(f,"r");
 	if (fh == NULL)
 	{
-		syslog(LOG_ERR, "Unable to open bsd-rngd.conf for read: %s", strerror(errno));
-		exit(-1);
-	}
+		if (d == 1)
+		{
+			syslog(LOG_ERR, "Unable to open %s for read: %s", f, strerror(errno));
+			exit(-1);
+		}
+		else
+		{
+			fprintf(stderr, "Unable to open %s for read: %s\n", f, strerror(errno));
+			exit(-1);
+		}
+	}	
 	flock(fileno(fh), LOCK_EX);
 	char line[MAX_CONF_LINE_BUF];
 	while(fgets(line,sizeof(line), fh) != NULL)
@@ -198,25 +210,6 @@ read_config(conf_t *c, char *f)
 	
 }
 
-
-
-
-/* write pid file to /var/run */
-void
-write_pid(pid_t p)
-{
-	FILE *fh = fopen("/var/run/bsd-rngd.pid", "w");
-	if (fh == NULL)
-	{
-		syslog(LOG_WARNING, "Unable to write pid file /var/run/bsd-rngd: %s", strerror(errno));
-		exit(-1);
-	}
-	flock(fileno(fh), LOCK_EX);
-	fprintf(fh,"%d\n",p);
-	flock(fileno(fh), LOCK_UN);
-	fclose(fh);
-}
-
 int
 main(int argc, char *argv[])
 {
@@ -224,7 +217,8 @@ main(int argc, char *argv[])
 	conf_t config;
 	int c = 0;
 	int daemonize = 0;
-
+	struct pidfh *pfh;
+	pid_t spid;
 
 	while((ch = getopt(argc, argv, "hdc:")) != -1)
 	{
@@ -237,7 +231,7 @@ main(int argc, char *argv[])
 				daemonize = 1;
 				break;
 			case 'c':
-				read_config(&config,optarg);
+				read_config(&config,optarg,daemonize);
 				c = 1;
 				break;
 			default:
@@ -246,7 +240,7 @@ main(int argc, char *argv[])
 		
 	}
 	if (c == 0)
-		read_config(&config, "/usr/local/etc/bsd-rngd.conf");
+		read_config(&config, "/usr/local/etc/bsd-rngd.conf",daemonize);
 	uint32_t bytes = 0, sleep = 0;
 	const char *errstr;
 	bytes = (uint32_t)strtonum(config.read_bytes,8,4096,&errstr);
@@ -290,9 +284,23 @@ main(int argc, char *argv[])
 			exit(-1);
 		}
 	}
-
-	if (daemonize == 1)
-		daemon(0,0);
+	pfh = pidfile_open(NULL, 0600, &spid);
+	if (pfh == NULL)
+	{
+		if (errno == EEXIST)
+			errx(EXIT_FAILURE, "Daemon already running, pid %d", spid);
+		warn("Cannot open or create pid file");
+	}
+	if ((daemonize == 1) && (daemon(0,0) == -1))
+	{
+		pidfile_remove(pfh);
+		err(EXIT_FAILURE, "Cannot daemonize");
+	}
+	(void)signal(SIGTERM, dodie);
+	pidfile_write(pfh);
 	/* get to doing work */
 	entropy_feed(config.entropy_device, bytes, sleep);
+	
+	pidfile_remove(pfh);
+	return 0;
 }
