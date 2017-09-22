@@ -241,7 +241,7 @@ main(int argc, char *argv[])
 	}
 	if (c == 0)
 		read_config(&config, "/usr/local/etc/bsd-rngd.conf",daemonize);
-	uint32_t bytes = 0, sleep = 0;
+	uint32_t bytes = 0, sleepsec = 0;
 	const char *errstr;
 	bytes = (uint32_t)strtonum(config.read_bytes,8,4096,&errstr);
 	if (errstr != NULL)
@@ -299,7 +299,7 @@ main(int argc, char *argv[])
 	(void)signal(SIGTERM, dodie);
 	pidfile_write(pfh);
 	/* get to doing work */
-	entropy_feed(config.entropy_device, bytes, sleep);
+	entropy_feed(config.entropy_device, bytes, sleepsec);
 	
 	pidfile_remove(pfh);
 	return 0;
