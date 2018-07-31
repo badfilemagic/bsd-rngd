@@ -156,8 +156,8 @@ void entropy_feed(char *dev, uint32_t n, uint32_t s)
 void
 chomp(char *s)
 {
-	int i = 0;
-	for (i = 0; i < strlen(s); i++)
+	int i;
+	for (i = strlen(s); i > 0; i--)
 	{
 		if (s[i] == '\n')
 			s[i] = '\0';
