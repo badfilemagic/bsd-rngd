@@ -79,7 +79,7 @@ read_entropy(int fd, char *buf, uint32_t n)
 
 void
 write_entropy(int d, char *buf, int n)
-{	
+{
 	ssize_t rv = 0;
 		rv = write(d,buf,n);
 	if ( rv < 0 ) 
@@ -156,13 +156,9 @@ void entropy_feed(char *dev, uint32_t n, uint32_t s)
 void
 chomp(char *s)
 {
-	int i;
-	for (i = strlen(s); i > 0; i--)
-	{
-		if (s[i] == '\n')
-			s[i] = '\0';
-	}
-	
+	if (s[strlen(s)-1] == '\n')
+		s[strlen(s)-1] = '\0';
+
 }
 
 /* read in the configuration file */
@@ -270,17 +266,17 @@ main(int argc, char *argv[])
 			exit(-1);
 		}
 	}
-	bytes = (uint32_t)strtonum(config.sleep_seconds, 0,10,&errstr);
+	sleepsec = (uint32_t)strtonum(config.sleep_seconds, 0,10,&errstr);
 	if (errstr != NULL)
 	{
 		if (daemonize == 0)
 		{
-			errx(1, "Sleep seconds is out of range (0,10): %u: %s", sleep, errstr);
+			errx(1, "Sleep seconds is out of range (0,10): %u: %s", (uint32_t)sleepsec, errstr);
 			exit(-1);
 		}
 		else
 		{
-			syslog(LOG_ERR, "Specified value for sleep interval %d is out of range (0,10): %s", sleep, errstr);
+			syslog(LOG_ERR, "Specified value for sleep interval %u is out of range (0,10): %s", (uint32_t)sleepsec, errstr);
 			exit(-1);
 		}
 	}
